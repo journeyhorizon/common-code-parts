@@ -7,3 +7,4 @@ const composeMRight =
 const composePromises = composeMRight("then");
 
 export { composePromises };
+
