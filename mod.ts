@@ -3,5 +3,4 @@ const composeMRight = (method) => (...ms) => ms.reduceRight((f, g) => (x) => g(x
 //Result of the previous function is the args of the current function
 const composePromises = composeMRight("then");
 
-export { composePromises };
-
+export default composePromises;
