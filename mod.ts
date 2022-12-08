@@ -6,4 +6,4 @@ const composeMRight =
 //Result of the previous function is the args of the current function
 const composePromises = composeMRight("then");
 
-export default composePromises;
+export { composePromises };
