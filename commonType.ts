@@ -6,7 +6,12 @@ export type Json =
 | { [property: string]: Json }
 | Json[];
 
-export interface ModuleComponents {
+export interface ModuleGenericComponents {
 // deno-lint-ignore ban-types
 [key: string]: Json | Function;
+}
+
+export interface ModuleFunctionComponents {
+  // deno-lint-ignore ban-types
+  [key: string]: Function;
 }
