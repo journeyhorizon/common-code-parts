@@ -33,3 +33,5 @@ const bindModule = (
     {}
   );
 };
+
+export default bindModule;
