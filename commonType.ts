@@ -17,3 +17,8 @@ export interface ModuleFunctionComponents {
   // deno-lint-ignore ban-types
   [key: string]: Function;
 }
+
+export interface ModuleError {
+  status: number;
+  data: Json;
+}
