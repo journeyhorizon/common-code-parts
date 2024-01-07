@@ -87,16 +87,15 @@ export class AWSNodeCompatibleRequestHandler extends NodeHttpHandler implements 
     if (handlerOptions) {
       if (handlerOptions.abortSignal) {
         throw new Error('No support for mapping abort signal')
+        // FIXME: Implement mapping of abort signal handlind from Node to Deno
         // requestOptions.signal = handlerOptions.abortSignal;
       }
     }
 
-    const query = queryParser(request.query)
-    console.log('Query', query)
-    const url = `${request.protocol}//${request.hostname}${request.path}${query}`
-    console.log('URL', url)
-
-    const rawResponse: Response = await fetch(url, requestOptions);
+    const rawResponse: Response = await fetch(
+      `${request.protocol}//${request.hostname}${request.path}${queryParser(request.query)}`,
+      requestOptions
+    );
 
     // Deno ReadableStream and Node Stream are not compatible since Node expose events while Deno does not
     // So we would need to mimic that behavior using Node EventEmitter
@@ -130,7 +129,7 @@ export class AWSNodeCompatibleRequestHandler extends NodeHttpHandler implements 
   // Implement the HttpHandler interface methods
   // deno-lint-ignore no-unused-vars
   updateHttpClientConfig(key: keyof AWSNodeCompatibleHttpHandlerConfig, value: AWSNodeCompatibleHttpHandlerConfig[typeof key]): void {
-
+    // Do nothing.
   }
 
   httpHandlerConfigs(): AWSNodeCompatibleHttpHandlerConfig {
