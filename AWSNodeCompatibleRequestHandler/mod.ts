@@ -1,58 +1,56 @@
 import { NodeHttpHandler } from "npm:@aws-sdk/node-http-handler";
+import { HttpHandlerOptions, AbortSignal, QueryParameterBag, HeaderBag, HttpMessage } from "npm:@smithy/types";
+import { HttpHandler, HttpRequest, HttpResponse } from "npm:@smithy/protocol-http";
 
-// deno-lint-ignore no-explicit-any
-export type Record<K extends keyof any, T> = {
-  [P in K]: T;
-};
-
-export const queryParser = (query?: { [key: string]: number | string }): string => {
+const queryParser = (query?: QueryParameterBag): string => {
   if (!query) {
     return "";
   }
 
-  return Object.entries(query).reduce(
-    (query: string, currentQueryPair: [string, string | number]): string => {
-      const [key, value] = currentQueryPair;
-      if (query === "") {
-        return `?${key}=${value}`;
+  return Object.entries(query)
+    .reduce((result, [key, value]) => {
+      if (value !== null) {
+        let stringRep
+        if (typeof value === 'string') {
+          stringRep = value
+        } else if (Array.isArray(value)) {
+          stringRep = value.join(',')
+        }
+        return result === ''
+          ? `?${key}=${stringRep}`
+          : `${result}&${key}=${stringRep}`
       }
-      return `${query}&${key}=${value}`;
-    },
-    ""
-  );
+      return result;
+    }, '')
 };
 
-export const parseDenoToNodeHeaders = (headers: Headers): HeaderBag => {
+const parseDenoToNodeHeaders = (headers: Headers): HeaderBag => {
   const nodeCompatibleHeader: HeaderBag = {};
+
   headers.forEach((value: string, key: string) => {
     nodeCompatibleHeader[`${key}`] = value;
   });
+
   return nodeCompatibleHeader;
 };
-
-export declare type HeaderBag = Record<string, string>;
-
-export interface HttpMessage {
-  headers: HeaderBag;
-  // deno-lint-ignore no-explicit-any
-  body?: any;
-}
 
 export declare type HttpResponseOptions = Partial<HttpMessage> & {
   statusCode: number;
 };
 
-export class DenoHttpResponse {
+export class DenoHttpResponse extends HttpResponse {
   statusCode: number;
   headers: HeaderBag;
   // deno-lint-ignore no-explicit-any
   body?: any;
   constructor(options: HttpResponseOptions) {
+    super(options)
+
     this.statusCode = options.statusCode;
     this.headers = options.headers || {};
     this.body = options.body;
   }
-  static isInstance(response: DenoHttpResponse) {
+  static isInstance(response: DenoHttpResponse): response is HttpResponse {
     if (!response) return false;
     const resp = response;
     return (
@@ -68,39 +66,41 @@ export interface NodeCompatibleReadableStream<R> extends ReadableStream<R> {
   on?: (eventName: string, cb: Function) => void;
 }
 
-export class AWSNodeCompatibleRequestHandler extends NodeHttpHandler {
+// deno-lint-ignore no-empty-interface
+export interface AWSNodeCompatibleHttpHandlerConfig {
+  // Define any custom configuration options here
+}
+
+export class AWSNodeCompatibleRequestHandler extends NodeHttpHandler implements HttpHandler<AWSNodeCompatibleHttpHandlerConfig> {
   async handle(
-    // deno-lint-ignore no-explicit-any
-    request: any,
-    handlerOptions?: {
-      abortSignal: AbortSignal;
-    }
-  ): Promise<{
-    response: DenoHttpResponse;
-  }> {
+    request: HttpRequest,
+    handlerOptions?: HttpHandlerOptions
+  ): Promise<{ response: HttpResponse; }> {
     const requestOptions: RequestInit = {
       headers: request.headers,
       method: request.method,
       body: request.body,
       keepalive: true,
     };
+    console.log('Request Options', requestOptions)
 
     if (handlerOptions) {
-      requestOptions.signal = handlerOptions.abortSignal;
+      if (handlerOptions.abortSignal) {
+        throw new Error('No support for mapping abort signal')
+        // requestOptions.signal = handlerOptions.abortSignal;
+      }
     }
 
-    const rawResponse: Response = await fetch(
-      `${request.protocol}//${request.hostname}${request.path}${queryParser(
-        request.query
-      )}`,
-      requestOptions
-    );
+    const query = queryParser(request.query)
+    console.log('Query', query)
+    const url = `${request.protocol}//${request.hostname}${request.path}${query}`
+    console.log('URL', url)
+
+    const rawResponse: Response = await fetch(url, requestOptions);
 
     // Deno ReadableStream and Node Stream are not compatible since Node expose events while Deno does not
     // So we would need to mimic that behavior using Node EventEmitter
-
-    const streamingBody: NodeCompatibleReadableStream<Uint8Array> | null =
-      rawResponse.body;
+    const streamingBody: NodeCompatibleReadableStream<Uint8Array> | null = rawResponse.body;
 
     if (streamingBody) {
       streamingBody.pipe = async (stream) => {
@@ -111,22 +111,29 @@ export class AWSNodeCompatibleRequestHandler extends NodeHttpHandler {
           // We would call node stream.end method so that the finish event can be called
           stream.end(parsedBody.value || "");
         }
-      };
+      }
+
       streamingBody.on = (eventName, _cb) => {
-        console.info(
-          `Readable Stream event listener, event "${eventName}": Not implemented`
-        );
-      };
+        console.info(`Readable Stream event listener, event "${eventName}": Not implemented`)
+      }
     }
 
     const response = new DenoHttpResponse({
       statusCode: rawResponse.status,
       headers: parseDenoToNodeHeaders(rawResponse.headers),
       body: streamingBody,
-    });
+    })
 
-    return {
-      response,
-    };
+    return { response }
+  }
+
+  // Implement the HttpHandler interface methods
+  // deno-lint-ignore no-unused-vars
+  updateHttpClientConfig(key: keyof AWSNodeCompatibleHttpHandlerConfig, value: AWSNodeCompatibleHttpHandlerConfig[typeof key]): void {
+
+  }
+
+  httpHandlerConfigs(): AWSNodeCompatibleHttpHandlerConfig {
+    return {}; // Return an instance of CustomHttpHandlerConfig
   }
 }
